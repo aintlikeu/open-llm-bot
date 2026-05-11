@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /root/open-llm-bot log --oneline -20)",
+      "Bash(git -C /root/open-llm-bot branch -a)",
+      "Bash(python3 *)",
+      "Bash(pip install *)",
+      "Bash(ruff check *)",
+      "Bash(docker compose build *)",
+      "Bash(BOT_TOKEN=test ADMIN_IDS=\"123,456\" DEEPSEEK_API_KEY=test python3 *)",
+      "Bash(BOT_TOKEN=test ADMIN_IDS=\"123\" DEEPSEEK_API_KEY=test python3 *)",
+      "Bash(aa-status)",
+      "Bash(docker compose *)",
+      "Bash(DOCKER_BUILDKIT=0 docker build -t test-build .)",
+      "Bash(dockerd --help)",
+      "Bash(runc --help)",
+      "Read(//sys/kernel/security/apparmor/**)",
+      "Read(//proc/55895/attr/apparmor/**)",
+      "Read(//proc/55895/attr/**)",
+      "Read(//sys/module/apparmor/parameters/**)",
+      "Bash(dpkg -l)",
+      "Bash(echo \"N\")",
+      "Bash(mount --bind /tmp/apparmor_disabled /sys/module/apparmor/parameters/enabled)",
+      "Bash(docker rm *)",
+      "Bash(systemctl restart *)",
+      "Bash(systemctl is-enabled *)",
+      "Bash(chmod +x *)"
+    ]
+  }
+}
