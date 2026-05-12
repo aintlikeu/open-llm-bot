@@ -58,10 +58,12 @@ async def cb_users(callback: CallbackQuery) -> None:
     buttons: list[list[InlineKeyboardButton]] = []
     for user in users:
         name = user.username or str(user.telegram_id)
+        is_admin = user.telegram_id in ADMIN_IDS
+        prefix = "★" if is_admin else "X"
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text=f"X  {name} ({user.telegram_id})",
+                    text=f"{prefix}  {name} ({user.telegram_id})",
                     callback_data=f"a:ur:{user.telegram_id}",
                 )
             ]
@@ -81,10 +83,42 @@ async def cb_users(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("a:ur:"))
+async def cb_remove_user_confirm(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    telegram_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+
+    if telegram_id in ADMIN_IDS:
+        await callback.answer("Cannot remove an admin user", show_alert=True)
+        return
+
+    user = await crud.get_user(telegram_id)
+    name = (user.username if user and user.username else str(telegram_id))
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Yes, remove", callback_data=f"a:uc:{telegram_id}"),
+                InlineKeyboardButton(text="Cancel", callback_data="a:users"),
+            ]
+        ]
+    )
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"Remove user {name} ({telegram_id})?", reply_markup=kb
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("a:uc:"))
 async def cb_remove_user(callback: CallbackQuery) -> None:
     if not _is_admin(callback.from_user.id):
         return
     telegram_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+
+    if telegram_id in ADMIN_IDS:
+        await callback.answer("Cannot remove an admin user", show_alert=True)
+        return
+
     await crud.set_user_allowed(telegram_id, False)
     await cb_users(callback)
 
