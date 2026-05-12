@@ -28,7 +28,12 @@
       "Bash(bash *)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('bot/main.py'\\).read\\(\\)\\); print\\('main.py: OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('bot/config.py'\\).read\\(\\)\\); print\\('config.py: OK'\\)\")",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "WebSearch",
+      "WebFetch(domain:api-docs.deepseek.com)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot/handlers/admin.py'\\).read\\(\\)\\); print\\('admin.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot/providers/deepseek.py'\\).read\\(\\)\\); print\\('deepseek.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot/providers/base.py'\\).read\\(\\)\\); print\\('base.py: OK'\\)\")"
     ]
   }
 }

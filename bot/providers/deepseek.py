@@ -1,6 +1,6 @@
 import httpx
 
-from bot.providers.base import BaseProvider, LLMResponse
+from bot.providers.base import BalanceInfo, BaseProvider, LLMResponse
 
 PRICING: dict[str, dict[str, float]] = {
     "deepseek-chat": {"input": 0.27, "output": 1.10},
@@ -35,6 +35,20 @@ class DeepSeekProvider(BaseProvider):
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
         )
+
+    async def get_balance(self) -> list[BalanceInfo]:
+        response = await self.client.get("/user/balance")
+        response.raise_for_status()
+        data = response.json()
+        return [
+            BalanceInfo(
+                currency=item["currency"],
+                total_balance=float(item["total_balance"]),
+                granted_balance=float(item["granted_balance"]),
+                topped_up_balance=float(item["topped_up_balance"]),
+            )
+            for item in data.get("balance_infos", [])
+        ]
 
     async def close(self) -> None:
         await self.client.aclose()

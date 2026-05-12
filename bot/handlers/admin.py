@@ -4,8 +4,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+import logging
+
 from bot.config import ADMIN_IDS
 from bot.database import crud
+from bot.providers.base import BaseProvider
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="admin")
 
@@ -26,6 +31,34 @@ def _admin_menu_kb() -> InlineKeyboardMarkup:
 
 def _is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
+
+
+# ── Balance ──────────────────────────────────────────────────────────────────
+
+
+@router.message(Command("balance"))
+async def cmd_balance(message: Message, is_admin: bool, provider: BaseProvider) -> None:
+    if not is_admin:
+        return
+    try:
+        balances = await provider.get_balance()
+    except Exception:
+        logger.exception("Failed to fetch balance")
+        await message.answer("Failed to fetch balance from provider.")
+        return
+
+    if not balances:
+        await message.answer("No balance information available.")
+        return
+
+    lines: list[str] = ["DeepSeek Balance\n"]
+    for b in balances:
+        lines.append(
+            f"{b.currency}: ${b.total_balance:.2f}\n"
+            f"  Granted: ${b.granted_balance:.2f}\n"
+            f"  Topped up: ${b.topped_up_balance:.2f}"
+        )
+    await message.answer("\n".join(lines))
 
 
 # ── Menu ─────────────────────────────────────────────────────────────────────
