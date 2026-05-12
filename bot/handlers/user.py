@@ -96,7 +96,7 @@ async def cmd_new(message: Message) -> None:
 # ── Chat with LLM ───────────────────────────────────────────────────────────
 
 
-@router.message(F.text)
+@router.message(F.text & ~F.text.startswith("/"))
 async def handle_chat(message: Message, provider: DeepSeekProvider) -> None:
     user = message.from_user
     if user is None:
