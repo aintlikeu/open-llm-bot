@@ -4,8 +4,9 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, BotCommandScopeChat
 
-from bot.config import settings
+from bot.config import ADMIN_IDS, settings
 from bot.database import crud
 from bot.handlers import admin, common, user
 from bot.middlewares.access import AccessMiddleware
@@ -80,6 +81,22 @@ async def main() -> None:
 
     provider = DeepSeekProvider(settings.deepseek_api_key)
     dp = _build_dispatcher(provider)
+
+    user_commands = [
+        BotCommand(command="new", description="Start a new conversation"),
+        BotCommand(command="cabinet", description="Model selection & settings"),
+        BotCommand(command="help", description="Show help"),
+    ]
+    admin_commands = [
+        *user_commands,
+        BotCommand(command="admin", description="Admin panel"),
+        BotCommand(command="balance", description="DeepSeek balance"),
+    ]
+    await bot.set_my_commands(user_commands)
+    for admin_id in ADMIN_IDS:
+        await bot.set_my_commands(
+            admin_commands, scope=BotCommandScopeChat(chat_id=admin_id)
+        )
 
     try:
         if settings.bot_mode == "webhook":

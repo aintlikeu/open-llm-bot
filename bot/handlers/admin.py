@@ -25,6 +25,7 @@ def _admin_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Users", callback_data="a:users")],
             [InlineKeyboardButton(text="Models", callback_data="a:models")],
             [InlineKeyboardButton(text="Statistics", callback_data="a:stats")],
+            [InlineKeyboardButton(text="Balance", callback_data="a:balance")],
         ]
     )
 
@@ -34,6 +35,17 @@ def _is_admin(user_id: int) -> bool:
 
 
 # ── Balance ──────────────────────────────────────────────────────────────────
+
+
+def _format_balance(balances: list) -> str:
+    lines: list[str] = ["DeepSeek Balance\n"]
+    for b in balances:
+        lines.append(
+            f"{b.currency}: ${b.total_balance:.2f}\n"
+            f"  Granted: ${b.granted_balance:.2f}\n"
+            f"  Topped up: ${b.topped_up_balance:.2f}"
+        )
+    return "\n".join(lines)
 
 
 @router.message(Command("balance"))
@@ -51,14 +63,32 @@ async def cmd_balance(message: Message, is_admin: bool, provider: BaseProvider) 
         await message.answer("No balance information available.")
         return
 
-    lines: list[str] = ["DeepSeek Balance\n"]
-    for b in balances:
-        lines.append(
-            f"{b.currency}: ${b.total_balance:.2f}\n"
-            f"  Granted: ${b.granted_balance:.2f}\n"
-            f"  Topped up: ${b.topped_up_balance:.2f}"
-        )
-    await message.answer("\n".join(lines))
+    await message.answer(_format_balance(balances))
+
+
+@router.callback_query(F.data == "a:balance")
+async def cb_balance(callback: CallbackQuery, provider: BaseProvider) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    try:
+        balances = await provider.get_balance()
+    except Exception:
+        logger.exception("Failed to fetch balance")
+        await callback.answer("Failed to fetch balance", show_alert=True)
+        return
+
+    if not balances:
+        text = "No balance information available."
+    else:
+        text = _format_balance(balances)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="< Back", callback_data="a:back")]
+        ]
+    )
+    await callback.message.edit_text(text, reply_markup=kb)  # type: ignore[union-attr]
+    await callback.answer()
 
 
 # ── Menu ─────────────────────────────────────────────────────────────────────
