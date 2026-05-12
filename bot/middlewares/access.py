@@ -31,10 +31,13 @@ class AccessMiddleware(BaseMiddleware):
         if db_user and db_user.is_allowed:
             return await handler(event, data)
 
+        # In groups — silently ignore to avoid spamming the chat
         if isinstance(event, Message):
-            await event.answer(
-                "Access denied. Contact the administrator to get access."
-            )
+            if event.chat.type == "private":
+                await event.answer(
+                    "Access denied. Contact the administrator to get access."
+                )
         elif isinstance(event, CallbackQuery):
             await event.answer("Access denied", show_alert=True)
+
         return None

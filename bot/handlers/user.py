@@ -1,6 +1,6 @@
 import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="user")
 
 
-# ── Cabinet ──────────────────────────────────────────────────────────────────
+# ── Cabinet ──────────────────────────────────────────────────────────────────────────────
 
 
 async def _cabinet_keyboard(
@@ -80,7 +80,7 @@ async def cb_clear_history(callback: CallbackQuery) -> None:
         await callback.answer("No history to clear")
 
 
-# ── New conversation ─────────────────────────────────────────────────────────
+# ── New conversation ───────────────────────────────────────────────────────────────────
 
 
 @router.message(Command("new"))
@@ -93,11 +93,56 @@ async def cmd_new(message: Message) -> None:
         await message.answer("New conversation started.")
 
 
-# ── Chat with LLM ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────────
+
+
+async def _is_addressed_to_bot(message: Message, bot: Bot) -> bool:
+    """Returns True if the message is addressed to the bot.
+
+    In private chats every message is addressed to the bot.
+    In groups the bot must be either replied-to or @mentioned.
+    """
+    if message.chat.type == "private":
+        return True
+
+    # Reply to one of the bot's messages
+    if (
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == bot.id
+    ):
+        return True
+
+    # @mention of the bot
+    if message.entities and message.text:
+        bot_info = await bot.get_me()
+        for entity in message.entities:
+            if entity.type == "mention":
+                mention = message.text[entity.offset : entity.offset + entity.length]
+                if mention.lstrip("@").lower() == (bot_info.username or "").lower():
+                    return True
+
+    return False
+
+
+async def _clean_text(message: Message, bot: Bot) -> str:
+    """Remove the bot @mention from the message text."""
+    text = message.text or ""
+    bot_info = await bot.get_me()
+    if bot_info.username:
+        text = text.replace(f"@{bot_info.username}", "").strip()
+    return text
+
+
+# ── Chat with LLM ──────────────────────────────────────────────────────────────────
 
 
 @router.message(F.text & ~F.text.startswith("/"))
-async def handle_chat(message: Message, provider: DeepSeekProvider) -> None:
+async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) -> None:
+    # In groups only respond when directly addressed (reply or @mention)
+    if not await _is_addressed_to_bot(message, bot):
+        return
+
     user = message.from_user
     if user is None:
         return
@@ -121,9 +166,12 @@ async def handle_chat(message: Message, provider: DeepSeekProvider) -> None:
         )
         return
 
+    # Strip @mention from text before sending to LLM
+    user_text = await _clean_text(message, bot)
+
     history = await crud.get_chat_history(db_user.id, settings.chat_history_window)
     messages = [{"role": h.role, "content": h.content} for h in history]
-    messages.append({"role": "user", "content": message.text})
+    messages.append({"role": "user", "content": user_text})
 
     await message.bot.send_chat_action(message.chat.id, "typing")  # type: ignore[union-attr]
 
@@ -136,7 +184,7 @@ async def handle_chat(message: Message, provider: DeepSeekProvider) -> None:
         )
         return
 
-    await crud.add_chat_message(db_user.id, "user", message.text)
+    await crud.add_chat_message(db_user.id, "user", user_text)
     await crud.add_chat_message(db_user.id, "assistant", response.content)
 
     cost = DeepSeekProvider.calculate_cost(
