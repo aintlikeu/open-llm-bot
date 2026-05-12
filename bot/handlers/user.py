@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot.config import settings
 from bot.database import crud
 from bot.providers.deepseek import DeepSeekProvider
-from bot.utils.formatting import format_llm_response, split_message, unescape_markdown_v2
+from bot.utils.formatting import format_llm_response, split_message
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,4 @@ async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) ->
 
     formatted = format_llm_response(response.content)
     for part in split_message(formatted):
-        try:
-            await message.answer(part, parse_mode="MarkdownV2")
-        except Exception:
-            await message.answer(unescape_markdown_v2(part))
+        await message.answer(part, parse_mode="HTML")
