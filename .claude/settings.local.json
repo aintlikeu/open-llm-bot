@@ -24,7 +24,11 @@
       "Bash(docker rm *)",
       "Bash(systemctl restart *)",
       "Bash(systemctl is-enabled *)",
-      "Bash(chmod +x *)"
+      "Bash(chmod +x *)",
+      "Bash(bash *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot/main.py'\\).read\\(\\)\\); print\\('main.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot/config.py'\\).read\\(\\)\\); print\\('config.py: OK'\\)\")",
+      "Bash(pip show *)"
     ]
   }
 }

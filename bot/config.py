@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///data/bot.db"
     chat_history_window: int = 20
 
+    bot_mode: str = "polling"
+    webhook_url: str = ""
+    webhook_path: str = "/webhook"
+    webhook_host: str = "0.0.0.0"
+    webhook_port: int = 8080
+    webhook_secret: str = ""
+
 
 settings = Settings()  # type: ignore[call-arg]
 
