@@ -3,6 +3,9 @@ from sqlalchemy import delete, func, select
 from bot.database.models import Base, ChatHistory, LLMModel, UsageLog, User
 from bot.database.session import async_session, engine
 
+# Sentinel user_id used for group/channel shared history
+_GROUP_USER_ID = 0
+
 
 async def init_db() -> None:
     async with engine.begin() as conn:
@@ -118,17 +121,28 @@ async def toggle_model(model_id: int) -> LLMModel | None:
         return model
 
 
-async def add_chat_message(user_id: int, chat_id: int, role: str, content: str) -> None:
+def _history_user_id(is_group: bool, db_user_id: int) -> int:
+    """In groups history is shared (user_id=0). In private chats it's per-user."""
+    return _GROUP_USER_ID if is_group else db_user_id
+
+
+async def add_chat_message(
+    db_user_id: int, chat_id: int, role: str, content: str, *, is_group: bool = False
+) -> None:
+    uid = _history_user_id(is_group, db_user_id)
     async with async_session() as session:
-        session.add(ChatHistory(user_id=user_id, chat_id=chat_id, role=role, content=content))
+        session.add(ChatHistory(user_id=uid, chat_id=chat_id, role=role, content=content))
         await session.commit()
 
 
-async def get_chat_history(user_id: int, chat_id: int, limit: int = 20) -> list[ChatHistory]:
+async def get_chat_history(
+    db_user_id: int, chat_id: int, limit: int = 20, *, is_group: bool = False
+) -> list[ChatHistory]:
+    uid = _history_user_id(is_group, db_user_id)
     async with async_session() as session:
         result = await session.execute(
             select(ChatHistory)
-            .where(ChatHistory.user_id == user_id, ChatHistory.chat_id == chat_id)
+            .where(ChatHistory.user_id == uid, ChatHistory.chat_id == chat_id)
             .order_by(ChatHistory.id.desc())
             .limit(limit)
         )
@@ -137,14 +151,18 @@ async def get_chat_history(user_id: int, chat_id: int, limit: int = 20) -> list[
         return messages
 
 
-async def clear_chat_history(user_id: int, chat_id: int | None = None) -> int:
-    """Clear chat history for a user.
+async def clear_chat_history(
+    db_user_id: int, chat_id: int | None = None, *, is_group: bool = False
+) -> int:
+    """Clear history.
 
-    If chat_id is provided, only messages from that specific chat are removed.
-    Otherwise all messages for the user across all chats are removed.
+    In group context clears shared history for the chat.
+    In private context clears history for the user (optionally scoped to chat_id).
+    If chat_id is None and not a group, clears all history for the user.
     """
+    uid = _history_user_id(is_group, db_user_id)
     async with async_session() as session:
-        stmt = delete(ChatHistory).where(ChatHistory.user_id == user_id)
+        stmt = delete(ChatHistory).where(ChatHistory.user_id == uid)
         if chat_id is not None:
             stmt = stmt.where(ChatHistory.chat_id == chat_id)
         result = await session.execute(stmt)

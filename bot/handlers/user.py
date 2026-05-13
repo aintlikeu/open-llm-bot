@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="user")
 
+GROUP_CHAT_TYPES = {"group", "supergroup", "channel"}
+
+
+def _is_group(message: Message) -> bool:
+    return message.chat.type in GROUP_CHAT_TYPES
+
 
 # ── Cabinet ──────────────────────────────────────────────────────────────────────────────
 
@@ -74,7 +80,7 @@ async def cb_select_model(callback: CallbackQuery) -> None:
 async def cb_clear_history(callback: CallbackQuery) -> None:
     db_user = await crud.get_user(callback.from_user.id)
     if db_user:
-        # Cabinet has no chat context — clear history across all chats for this user
+        # Cabinet is only accessible from private chat — clear user's private history
         count = await crud.clear_chat_history(db_user.id)
         await callback.answer(f"Cleared {count} messages")
     else:
@@ -88,8 +94,8 @@ async def cb_clear_history(callback: CallbackQuery) -> None:
 async def cmd_new(message: Message) -> None:
     db_user = await crud.get_user(message.from_user.id)  # type: ignore[union-attr]
     if db_user:
-        # Clear only the current chat's history
-        count = await crud.clear_chat_history(db_user.id, message.chat.id)
+        group = _is_group(message)
+        count = await crud.clear_chat_history(db_user.id, message.chat.id, is_group=group)
         await message.answer(f"New conversation started. Cleared {count} messages.")
     else:
         await message.answer("New conversation started.")
@@ -99,15 +105,12 @@ async def cmd_new(message: Message) -> None:
 
 
 async def _is_addressed_to_bot(message: Message, bot: Bot) -> bool:
-    """Returns True if the message is addressed to the bot.
-
-    In private chats every message is addressed to the bot.
-    In groups the bot must be either replied-to or @mentioned.
+    """In private chats every message is addressed to the bot.
+    In groups the bot must be replied-to or @mentioned.
     """
     if message.chat.type == "private":
         return True
 
-    # Reply to one of the bot's messages
     if (
         message.reply_to_message
         and message.reply_to_message.from_user
@@ -115,7 +118,6 @@ async def _is_addressed_to_bot(message: Message, bot: Bot) -> bool:
     ):
         return True
 
-    # @mention of the bot
     if message.entities and message.text:
         bot_info = await bot.get_me()
         for entity in message.entities:
@@ -136,12 +138,20 @@ async def _clean_text(message: Message, bot: Bot) -> str:
     return text
 
 
+def _author_prefix(message: Message) -> str:
+    """Return 'Name: ' prefix for group messages so the LLM knows who is speaking."""
+    user = message.from_user
+    if user is None:
+        return ""
+    name = user.full_name or user.username or str(user.id)
+    return f"{name}: "
+
+
 # ── Chat with LLM ──────────────────────────────────────────────────────────────────
 
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) -> None:
-    # In groups only respond when directly addressed (reply or @mention)
     if not await _is_addressed_to_bot(message, bot):
         return
 
@@ -168,12 +178,16 @@ async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) ->
         )
         return
 
-    # Strip @mention from text before sending to LLM
-    user_text = await _clean_text(message, bot)
+    group = _is_group(message)
+    raw_text = await _clean_text(message, bot)
 
-    # History is scoped to this specific chat (private chat or group)
+    # In group chats prepend the author name so the LLM knows who is speaking
+    user_text = (_author_prefix(message) + raw_text) if group else raw_text
+
+    # In groups: shared history for the whole chat (keyed by chat_id only)
+    # In private: per-user history
     history = await crud.get_chat_history(
-        db_user.id, message.chat.id, settings.chat_history_window
+        db_user.id, message.chat.id, settings.chat_history_window, is_group=group
     )
     messages = [{"role": h.role, "content": h.content} for h in history]
     messages.append({"role": "user", "content": user_text})
@@ -189,8 +203,8 @@ async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) ->
         )
         return
 
-    await crud.add_chat_message(db_user.id, message.chat.id, "user", user_text)
-    await crud.add_chat_message(db_user.id, message.chat.id, "assistant", response.content)
+    await crud.add_chat_message(db_user.id, message.chat.id, "user", user_text, is_group=group)
+    await crud.add_chat_message(db_user.id, message.chat.id, "assistant", response.content, is_group=group)
 
     cost = DeepSeekProvider.calculate_cost(
         model.name, response.prompt_tokens, response.completion_tokens
