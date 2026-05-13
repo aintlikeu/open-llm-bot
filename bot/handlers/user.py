@@ -15,6 +15,8 @@ router = Router(name="user")
 
 GROUP_CHAT_TYPES = {"group", "supergroup", "channel"}
 
+_MAX_PREVIEW = 120  # chars per message in /context preview
+
 
 def _is_group(message: Message) -> bool:
     return message.chat.type in GROUP_CHAT_TYPES
@@ -99,6 +101,44 @@ async def cmd_new(message: Message) -> None:
         await message.answer(f"New conversation started. Cleared {count} messages.")
     else:
         await message.answer("New conversation started.")
+
+
+# ── Context inspect ───────────────────────────────────────────────────────────────────
+
+
+@router.message(Command("context"))
+async def cmd_context(message: Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+
+    db_user = await crud.get_user(user.id)
+    if not db_user:
+        await message.answer("No history yet.")
+        return
+
+    group = _is_group(message)
+    history = await crud.get_chat_history(
+        db_user.id, message.chat.id, settings.chat_history_window, is_group=group
+    )
+
+    scope = "\U0001f465 shared (group)" if group else "\U0001f464 personal (private)"
+    total = len(history)
+
+    if total == 0:
+        await message.answer(f"<b>Context:</b> {scope}\n\nNo messages yet. Start chatting!", parse_mode="HTML")
+        return
+
+    lines = [f"<b>Context:</b> {scope}", f"<b>Messages in window:</b> {total}\n"]
+
+    for i, entry in enumerate(history, 1):
+        role_icon = "\U0001f9d1" if entry.role == "user" else "\U0001f916"
+        preview = entry.content.replace("<", "&lt;").replace(">", "&gt;")
+        if len(preview) > _MAX_PREVIEW:
+            preview = preview[:_MAX_PREVIEW].rstrip() + "…"
+        lines.append(f"{i}. {role_icon} <b>{entry.role}</b>: {preview}")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────────
