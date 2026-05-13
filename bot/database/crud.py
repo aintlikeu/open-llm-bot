@@ -118,17 +118,17 @@ async def toggle_model(model_id: int) -> LLMModel | None:
         return model
 
 
-async def add_chat_message(user_id: int, role: str, content: str) -> None:
+async def add_chat_message(user_id: int, chat_id: int, role: str, content: str) -> None:
     async with async_session() as session:
-        session.add(ChatHistory(user_id=user_id, role=role, content=content))
+        session.add(ChatHistory(user_id=user_id, chat_id=chat_id, role=role, content=content))
         await session.commit()
 
 
-async def get_chat_history(user_id: int, limit: int = 20) -> list[ChatHistory]:
+async def get_chat_history(user_id: int, chat_id: int, limit: int = 20) -> list[ChatHistory]:
     async with async_session() as session:
         result = await session.execute(
             select(ChatHistory)
-            .where(ChatHistory.user_id == user_id)
+            .where(ChatHistory.user_id == user_id, ChatHistory.chat_id == chat_id)
             .order_by(ChatHistory.id.desc())
             .limit(limit)
         )
@@ -137,11 +137,17 @@ async def get_chat_history(user_id: int, limit: int = 20) -> list[ChatHistory]:
         return messages
 
 
-async def clear_chat_history(user_id: int) -> int:
+async def clear_chat_history(user_id: int, chat_id: int | None = None) -> int:
+    """Clear chat history for a user.
+
+    If chat_id is provided, only messages from that specific chat are removed.
+    Otherwise all messages for the user across all chats are removed.
+    """
     async with async_session() as session:
-        result = await session.execute(
-            delete(ChatHistory).where(ChatHistory.user_id == user_id)
-        )
+        stmt = delete(ChatHistory).where(ChatHistory.user_id == user_id)
+        if chat_id is not None:
+            stmt = stmt.where(ChatHistory.chat_id == chat_id)
+        result = await session.execute(stmt)
         await session.commit()
         return result.rowcount  # type: ignore[return-value]
 

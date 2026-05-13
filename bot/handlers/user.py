@@ -74,6 +74,7 @@ async def cb_select_model(callback: CallbackQuery) -> None:
 async def cb_clear_history(callback: CallbackQuery) -> None:
     db_user = await crud.get_user(callback.from_user.id)
     if db_user:
+        # Cabinet has no chat context — clear history across all chats for this user
         count = await crud.clear_chat_history(db_user.id)
         await callback.answer(f"Cleared {count} messages")
     else:
@@ -87,13 +88,14 @@ async def cb_clear_history(callback: CallbackQuery) -> None:
 async def cmd_new(message: Message) -> None:
     db_user = await crud.get_user(message.from_user.id)  # type: ignore[union-attr]
     if db_user:
-        count = await crud.clear_chat_history(db_user.id)
+        # Clear only the current chat's history
+        count = await crud.clear_chat_history(db_user.id, message.chat.id)
         await message.answer(f"New conversation started. Cleared {count} messages.")
     else:
         await message.answer("New conversation started.")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────────────
 
 
 async def _is_addressed_to_bot(message: Message, bot: Bot) -> bool:
@@ -169,7 +171,10 @@ async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) ->
     # Strip @mention from text before sending to LLM
     user_text = await _clean_text(message, bot)
 
-    history = await crud.get_chat_history(db_user.id, settings.chat_history_window)
+    # History is scoped to this specific chat (private chat or group)
+    history = await crud.get_chat_history(
+        db_user.id, message.chat.id, settings.chat_history_window
+    )
     messages = [{"role": h.role, "content": h.content} for h in history]
     messages.append({"role": "user", "content": user_text})
 
@@ -184,8 +189,8 @@ async def handle_chat(message: Message, provider: DeepSeekProvider, bot: Bot) ->
         )
         return
 
-    await crud.add_chat_message(db_user.id, "user", user_text)
-    await crud.add_chat_message(db_user.id, "assistant", response.content)
+    await crud.add_chat_message(db_user.id, message.chat.id, "user", user_text)
+    await crud.add_chat_message(db_user.id, message.chat.id, "assistant", response.content)
 
     cost = DeepSeekProvider.calculate_cost(
         model.name, response.prompt_tokens, response.completion_tokens
